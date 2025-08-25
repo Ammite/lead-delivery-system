@@ -19,7 +19,7 @@
 
 1. **Клонируйте репозиторий:**
 ```bash
-git clone <repository_url>
+git clone https://github.com/Ammite/lead-delivery-system
 cd lead-delivery-system
 ```
 
@@ -41,6 +41,108 @@ python main.py
 ```
 
 Сервер будет доступен по адресу: `http://localhost:8000`
+
+## Развертывание в Ubuntu (Production)
+
+### Автоматическая установка
+
+1. **Клонируйте репозиторий на сервер:**
+```bash
+git clone https://github.com/Ammite/lead-delivery-system
+cd lead-delivery-system
+```
+
+2. **Запустите скрипт установки:**
+```bash
+chmod +x install.sh
+sudo ./install.sh
+```
+
+Скрипт автоматически:
+- Установит зависимости системы
+- Создаст пользователя сервиса
+- Настроит Python окружение
+- Создаст systemd сервис
+- Настроит Nginx reverse proxy
+- Настроит firewall
+
+3. **Настройте конфигурацию:**
+```bash
+sudo nano /opt/lead-delivery-system/config.py
+sudo nano /opt/lead-delivery-system/.env
+```
+
+4. **Перезапустите сервис:**
+```bash
+sudo systemctl restart lead-delivery-system
+```
+
+### Управление сервисом
+
+Используйте скрипт `manage.sh` для управления:
+
+```bash
+# Сделать исполняемым
+chmod +x manage.sh
+
+# Основные команды
+./manage.sh start      # Запустить сервис
+./manage.sh stop       # Остановить сервис  
+./manage.sh restart    # Перезапустить сервис
+./manage.sh status     # Показать статус
+./manage.sh logs       # Показать логи в реальном времени
+./manage.sh test       # Запустить нагрузочные тесты
+./manage.sh backup     # Создать backup конфигурации
+./manage.sh restore    # Восстановить из backup
+./manage.sh update     # Обновить код из git
+```
+
+### Ручная установка
+
+<details>
+<summary>Для расширенной настройки (нажмите для раскрытия)</summary>
+
+1. **Установите зависимости:**
+```bash
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv nginx systemd
+```
+
+2. **Создайте директорию и пользователя:**
+```bash
+sudo useradd --system --home-dir /opt/lead-delivery-system --shell /bin/false www-data
+sudo mkdir -p /opt/lead-delivery-system
+sudo chown www-data:www-data /opt/lead-delivery-system
+```
+
+3. **Скопируйте файлы:**
+```bash
+sudo cp -r . /opt/lead-delivery-system/
+sudo chown -R www-data:www-data /opt/lead-delivery-system
+```
+
+4. **Настройте Python окружение:**
+```bash
+cd /opt/lead-delivery-system
+sudo -u www-data python3 -m venv venv
+sudo -u www-data venv/bin/pip install -r requirements.txt
+```
+
+5. **Установите systemd сервис:**
+```bash
+sudo cp lead-delivery-system.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable lead-delivery-system
+sudo systemctl start lead-delivery-system
+```
+
+6. **Настройте Nginx (опционально):**
+```bash
+# Скопируйте конфигурацию из install.sh
+sudo systemctl restart nginx
+```
+
+</details>
 
 ## API
 
@@ -274,14 +376,17 @@ curl -X POST http://localhost:8000/leads \
 
 ```
 lead-delivery-system/
-├── main.py                # Основной код приложения (FastAPI + async)
-├── config.py              # Настройки (создать из config.example.py)  
-├── config.example.py      # Пример настроек
-├── requirements.txt       # Зависимости Python
-├── test.py               # Юнит-тесты
-├── simple_load_test.py   # Нагрузочные тесты
-├── load_test.py          # Продвинутые нагрузочные тесты  
-└── README.md             # Документация
+├── main.py                      # Основной код приложения (FastAPI + async)
+├── config.py                    # Настройки (создать из config.example.py)  
+├── config.example.py            # Пример настроек
+├── requirements.txt             # Зависимости Python
+├── test.py                     # Юнит-тесты
+├── simple_load_test.py         # Нагрузочные тесты
+├── load_test.py                # Продвинутые нагрузочные тесты
+├── lead-delivery-system.service # Systemd сервис файл
+├── install.sh                  # Скрипт автоматической установки Ubuntu
+├── manage.sh                   # Скрипт управления сервисом
+└── README.md                   # Документация
 ```
 
 ## Производительность
