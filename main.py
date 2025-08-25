@@ -235,8 +235,8 @@ async def send_single_email(to: str, subject: str, body: str, from_email: str) -
             port=config.SMTP_port,
             username=config.SMPT_login,
             password=config.SMPT_pass,
-            start_tls=True,
-            timeout=10
+            use_tls=True,  # Для порта 465 используем SSL/TLS
+            timeout=30     # Увеличиваем таймаут
         )
         return True
     except Exception as e:
