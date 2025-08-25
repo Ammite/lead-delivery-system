@@ -11,6 +11,9 @@ import config
 from email.mime.text import MIMEText
 import smtplib
 import requests  # для Telegram
+import aiohttp
+import asyncio
+import aiosmtplib
 
 app = FastAPI(title="Lead Delivery System", description="Система для обработки лидов", version="1.0.0")
 
@@ -63,25 +66,34 @@ async def create_lead(lead_data: Dict[str, Any]):
     
     log.debug(f"Lead #{lead_id}. Sending Data. Start.")
 
+    # Создаем задачи для параллельной отправки
+    tasks = []
+    
     if processed_lead.get("is_telegram", False):
         log.debug(f"Lead #{lead_id}. Sending Data. Start. Telegram.")
         if lead_data.get("is_form", True):
             log.debug(f"Lead #{lead_id}. Sending Data. Start. Telegram. Form.")
-            send_form_to_telegram(lead_data)
+            tasks.append(send_form_to_telegram(lead_data))
         else:
             log.debug(f"Lead #{lead_id}. Sending Data. Start. Telegram. Chat.")
-            send_lead_to_telegram(lead_data)
-        log.debug(f"Lead #{lead_id}. Sending Data. End. Telegram.")
+            tasks.append(send_lead_to_telegram(lead_data))
 
     if processed_lead.get("is_mail", False):
         log.debug(f"Lead #{lead_id}. Sending Data. Start. Email.")
         if lead_data.get("is_form", True):
             log.debug(f"Lead #{lead_id}. Sending Data. Start. Email. Form.")
-            send_form_to_mail(lead_data)
+            tasks.append(send_form_to_mail(lead_data))
         else:
             log.debug(f"Lead #{lead_id}. Sending Data. Start. Email. Chat.")
-            send_lead_to_mail(lead_data)
-        log.debug(f"Lead #{lead_id}. Sending Data. End. Email.")
+            tasks.append(send_lead_to_mail(lead_data))
+    
+    # Выполняем все задачи параллельно
+    if tasks:
+        try:
+            await asyncio.gather(*tasks, return_exceptions=True)
+            log.debug(f"Lead #{lead_id}. All sending tasks completed")
+        except Exception as e:
+            log.error(f"Lead #{lead_id}. Error in parallel sending: {e}")
 
     log.debug(f"Lead #{lead_id}. Sending Data. End.")
     
@@ -93,7 +105,7 @@ async def create_lead(lead_data: Dict[str, Any]):
         "data": processed_lead
     }
 
-def send_lead_to_telegram(lead_data: Dict[str, Any]):
+async def send_lead_to_telegram(lead_data: Dict[str, Any]):
     lead_id = lead_data.get("id", "")
     lead_source = lead_data.get("source", "")
     lead_text = lead_data.get("text", "")
@@ -106,21 +118,29 @@ def send_lead_to_telegram(lead_data: Dict[str, Any]):
     )
     try:
         token = config.TELEGRAM_BOT_TOKEN
-        chat_ids = config.source_data.get("source", {}).get("telegram_ids", [])
-        chat_ids.extend(config.default_telegram_ids)
+        chat_ids_w_source = config.source_data.get(lead_source, {}).get("telegram_ids", [])
+        chat_ids = chat_ids_w_source + config.default_telegram_ids
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        responses = []
+        
         log.debug(f"Lead #{lead_id}. Sending to chats: {str(chat_ids)}")
-        for chat_id in chat_ids:
-            payload = {"chat_id": chat_id, "text": tg_message, "parse_mode": "HTML"}
-            r = requests.post(url, data=payload, timeout=10)
-            responses.append((payload, r.content))
-        return responses
+        
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for chat_id in chat_ids:
+                payload = {"chat_id": chat_id, "text": tg_message, "parse_mode": "HTML"}
+                task = session.post(url, data=payload, timeout=aiohttp.ClientTimeout(total=10))
+                tasks.append(task)
+            
+            if tasks:
+                responses = await asyncio.gather(*tasks, return_exceptions=True)
+                return responses
+            return []
+            
     except Exception as e:
         log.error(f"Ошибка Telegram: {e}")
         return None
 
-def send_form_to_telegram(lead_data: Dict[str, Any]):
+async def send_form_to_telegram(lead_data: Dict[str, Any]):
     lead_name = lead_data.get("name", "")
     lead_phone = lead_data.get("phone", "")
     lead_email = lead_data.get("email", "")
@@ -141,21 +161,29 @@ def send_form_to_telegram(lead_data: Dict[str, Any]):
     )
     try:
         token = config.TELEGRAM_BOT_TOKEN
-        chat_ids = config.source_data.get("source", {}).get("telegram_ids", [])
-        chat_ids.extend(config.default_telegram_ids)
+        chat_ids_w_source = config.source_data.get(lead_source, {}).get("telegram_ids", [])
+        chat_ids = chat_ids_w_source + config.default_telegram_ids
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        responses = []
+        
         log.debug(f"Lead #{lead_id}. Sending to chats: {str(chat_ids)}")
-        for chat_id in chat_ids:
-            payload = {"chat_id": chat_id, "text": tg_message, "parse_mode": "HTML"}
-            r = requests.post(url, data=payload, timeout=10)
-            responses.append((payload, r.content))
-        return responses
+        
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for chat_id in chat_ids:
+                payload = {"chat_id": chat_id, "text": tg_message, "parse_mode": "HTML"}
+                task = session.post(url, data=payload, timeout=aiohttp.ClientTimeout(total=10))
+                tasks.append(task)
+            
+            if tasks:
+                responses = await asyncio.gather(*tasks, return_exceptions=True)
+                return responses
+            return []
+            
     except Exception as e:
         log.error(f"Ошибка Telegram: {e}")
         return None
     
-def send_lead_to_mail(lead_data: Dict[str, Any]) -> bool:
+async def send_lead_to_mail(lead_data: Dict[str, Any]) -> bool:
     lead_id = lead_data.get("id", "")
     lead_source = lead_data.get("source", "")
     lead_text = lead_data.get("text", "")
@@ -167,26 +195,55 @@ def send_lead_to_mail(lead_data: Dict[str, Any]) -> bool:
         f"{lead_text}"
     )
     try:
-        recievers = config.source_data.get("source", {}).get("emails", [])
-        recievers.extend(config.default_emails)
-        msg = MIMEText(body, "plain", "utf-8")
-        msg["Subject"] = subject
-        msg["From"] = config.SMTP_from
-
-        log.debug(f"Lead #{lead_id}. Sending to emails: {str(recievers)}")
-        for to in recievers:
-            msg["To"] = to
-            with smtplib.SMTP(config.SMTP_host, config.SMTP_port) as server:
-                server.starttls()
-                server.login(config.SMPT_login, config.SMPT_pass)
-                server.send_message(msg)
-
+        receivers = config.source_data.get(lead_source, {}).get("emails", [])
+        receivers.extend(config.default_emails)
+        
+        if not receivers:
+            return True
+            
+        log.debug(f"Lead #{lead_id}. Sending to emails: {str(receivers)}")
+        
+        # Асинхронная отправка всех писем параллельно
+        tasks = []
+        for to in receivers:
+            task = send_single_email(to, subject, body, config.SMTP_from)
+            tasks.append(task)
+        
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Проверяем успешность отправки
+            success_count = sum(1 for result in results if result is True)
+            log.debug(f"Lead #{lead_id}. Email sent successfully to {success_count}/{len(tasks)} recipients")
+            return success_count > 0
+        
         return True
     except Exception as e:
         log.error(f"Ошибка SMTP: {e}")
         return False
 
-def send_form_to_mail(lead_data: Dict[str, Any]):
+async def send_single_email(to: str, subject: str, body: str, from_email: str) -> bool:
+    """Отправка одного email асинхронно"""
+    try:
+        msg = MIMEText(body, "plain", "utf-8")
+        msg["Subject"] = subject
+        msg["From"] = from_email
+        msg["To"] = to
+        
+        await aiosmtplib.send(
+            msg,
+            hostname=config.SMTP_host,
+            port=config.SMTP_port,
+            username=config.SMPT_login,
+            password=config.SMPT_pass,
+            start_tls=True,
+            timeout=10
+        )
+        return True
+    except Exception as e:
+        log.error(f"Ошибка отправки email на {to}: {e}")
+        return False
+
+async def send_form_to_mail(lead_data: Dict[str, Any]):
     lead_name = lead_data.get("name", "")
     lead_phone = lead_data.get("phone", "")
     lead_email = lead_data.get("email", "")
@@ -206,20 +263,27 @@ def send_form_to_mail(lead_data: Dict[str, Any]):
         f"{lead_text}"
     )
     try:
-        recievers = config.source_data.get("source", {}).get("emails", [])
-        recievers.extend(config.default_emails)
-        msg = MIMEText(body, "plain", "utf-8")
-        msg["Subject"] = subject
-        msg["From"] = config.SMTP_from
-
-        log.debug(f"Lead #{lead_id}. Sending to emails: {str(recievers)}")
-        for to in recievers:
-            msg["To"] = to
-            with smtplib.SMTP(config.SMTP_host, config.SMTP_port) as server:
-                server.starttls()
-                server.login(config.SMPT_login, config.SMPT_pass)
-                server.send_message(msg)
-
+        receivers = config.source_data.get(lead_source, {}).get("emails", [])
+        receivers.extend(config.default_emails)
+        
+        if not receivers:
+            return True
+            
+        log.debug(f"Lead #{lead_id}. Sending to emails: {str(receivers)}")
+        
+        # Асинхронная отправка всех писем параллельно
+        tasks = []
+        for to in receivers:
+            task = send_single_email(to, subject, body, config.SMTP_from)
+            tasks.append(task)
+        
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Проверяем успешность отправки
+            success_count = sum(1 for result in results if result is True)
+            log.debug(f"Lead #{lead_id}. Email sent successfully to {success_count}/{len(tasks)} recipients")
+            return success_count > 0
+        
         return True
     except Exception as e:
         log.error(f"Ошибка SMTP: {e}")

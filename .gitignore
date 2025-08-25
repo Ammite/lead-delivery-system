@@ -3,3 +3,5 @@ venv
 .pytest_cache
 __pychache__
 config.py
+load_test.py
+simple_load_test.py
