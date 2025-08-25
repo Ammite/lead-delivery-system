@@ -1,7 +1,14 @@
-.env
+
+# python files
 venv
 .pytest_cache
 __pycache__
+
+# config file with keys
 config.py
+.env
+
+#test files
 load_test.py
 simple_load_test.py
+test.py
