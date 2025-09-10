@@ -1,4 +1,5 @@
 from datetime import datetime
+import pytz
 import json
 import re
 from fastapi import FastAPI, HTTPException
@@ -17,6 +18,12 @@ import aiosmtplib
 
 app = FastAPI(title="Lead Delivery System", description="Система для обработки лидов", version="1.0.0")
 
+# Настройка часового пояса
+NOVOSIBIRSK_TZ = pytz.timezone('Asia/Novosibirsk')
+
+def get_current_time():
+    """Возвращает текущее время в часовом поясе Asia/Novosibirsk"""
+    return datetime.now(NOVOSIBIRSK_TZ)
 
 logging.basicConfig(
     level=logging.DEBUG,  # минимальный уровень логирования
@@ -112,7 +119,7 @@ async def send_lead_to_telegram(lead_data: Dict[str, Any]):
     tg_message = (
         f"🔔 <b>Новый лид</b>\n\n"
         f"🌐 <b>Чат:</b> {lead_source}\n"
-        f"🕐 <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
+        f"🕐 <b>Время:</b> {get_current_time().strftime('%d.%m.%Y %H:%M:%S')}\n"
         f"🆔 <b>ID:</b> {lead_id}\n"
         f"{lead_text}"
     )
@@ -155,7 +162,7 @@ async def send_form_to_telegram(lead_data: Dict[str, Any]):
         f"👤 <b>Имя:</b> {lead_name}\n"
         f"📞 <b>Телефон:</b> {lead_phone}\n"
         f"📧 <b>Email:</b> {lead_email}\n"
-        f"🕐 <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
+        f"🕐 <b>Время:</b> {get_current_time().strftime('%d.%m.%Y %H:%M:%S')}\n"
         f"🆔 <b>ID:</b> {lead_id}\n"
         f"{lead_text}"
     )
@@ -190,7 +197,7 @@ async def send_lead_to_mail(lead_data: Dict[str, Any]) -> bool:
     subject = f"Новый лид с чата {lead_source}"
     body = (
         f"Чат: {lead_source}\n"
-        f"Дата: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
+        f"Дата: {get_current_time().strftime('%d.%m.%Y %H:%M:%S')}\n"
         f"ID заявки: {lead_id}\n"
         f"{lead_text}"
     )
@@ -258,7 +265,7 @@ async def send_form_to_mail(lead_data: Dict[str, Any]):
         f"Имя: {lead_name}\n"
         f"Телефон: {lead_phone}\n"
         f"Email: {lead_email}\n"
-        f"Дата: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
+        f"Дата: {get_current_time().strftime('%d.%m.%Y %H:%M:%S')}\n"
         f"ID заявки: {lead_id}\n"
         f"{lead_text}"
     )
